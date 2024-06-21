@@ -13,7 +13,8 @@ Find ODrive serial number (need it in hex format) in odrivetool by running:
     hex(dev0.serial_number).split('x')[1].upper()
 '''
 ODRIVE_SERIAL_NUMBER = "374E305C3133"
-
+# WHEEL_RADIUS = 0.08255  # meters
+# WHEEL_BASE =  0.48
 # default_logger = logging.getLogger(__name__)
 # default_logger.setLevel(logging.DEBUG)
 # # create console handler and set level to debug
@@ -36,6 +37,7 @@ class ODriveController:
 
     def __del__(self):
         self.disconnect()
+
     def connect(self):
     #    if self.driver:
     #         self.logger.info("Already connected. Disconnecting and reconnecting.")
@@ -65,6 +67,7 @@ class ODriveController:
         self.armed_pos = False
         self.calibration_override_timer = 10
         return True
+    
     def disconnect(self):
         self.right_axis = None
         self.left_axis = None
@@ -98,7 +101,7 @@ class ODriveController:
             self.odrive = None
         return True
     
-    def encoder_offset_calibration(self, axes=[0, 1], calibration_override=False):
+    def calibrate(self, axes="both"):
         # if not self.driver:
         #     self.logger.error("Not connected.")
         #     return False
@@ -138,16 +141,14 @@ class ODriveController:
         #     sleep(self.calibration_override_timer)
         
         print('Encoders calibrated.')
+
     def engage(self):
         if not self.odrive:
             # self.logger.error("Not connected.")
             return False
 
         #self.logger.debug("Setting drive mode.")
-        for axis in self.axes:
-            axis.controller.input_vel = 0
-            axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
-            # axis.controller.config.control_mode = CONTROL_MODE_VELOCITY_CONTROL
+        self.arm_velocity_control()
         
         #self.engaged = True
         return True
@@ -163,15 +164,6 @@ class ODriveController:
         #self.engaged = False
         return True
      
-    def drive(self, left_motor_val, right_motor_val):
-        if not self.odrive:
-            # self.logger.error("Not connected.")
-            return
-        #try:
-        self.left_axis.controller.input_vel = left_motor_val
-        self.right_axis.controller.input_vel = -right_motor_val
-        #except (fibre.protocol.ChannelBrokenException, AttributeError) as e:
-        #    raise ODriveFailure(str(e))
     
     def arm_velocity_control(self, axes=None):
         if not axes: axes = self.axes
@@ -191,33 +183,36 @@ class ODriveController:
             axis.requested_state = AXIS_STATE_CLOSED_LOOP_CONTROL
         self.armed_pos = True
 
-    def command_velocity(self, axis, velocity):
+    def drive_tps(self, left_motor_val, right_motor_val):
+        if not self.odrive:
+            # self.logger.error("Not connected.")
+            return
+        #try:
+        self.left_axis.controller.input_vel = -left_motor_val
+        self.right_axis.controller.input_vel = right_motor_val
+        #except (fibre.protocol.ChannelBrokenException, AttributeError) as e:
+        #    raise ODriveFailure(str(e))
+
+    def command_velocity_tps(self, axis, velocity):
         if self.armed_vel:
             print(f'Commanding velocity {velocity} on axis{axis}')
             self.axes[axis].controller.input_vel = velocity
 
-    def command_position(self, axis, position):
+    def command_position_t(self, axis, position):
         if self.armed_pos:
             self.axes[axis].controller.input_pos = position
 
-    def get_velocity(self, axis):
-        return self.axes[axis].encoder.vel_estimate
+    def get_velocity_tps(self, axis):
+        return axis.encoder.vel_estimate    if axis  else 0
 
-    def get_position(self, axis):
-        return (self.axes[axis].encoder.pos_estimate)
+    def get_position_t(self, axis):
+        return axis.encoder.pos_estimate    if axis  else 0  # units: turns
 
-    def get_errors(self, axes=[0, 1]):
-        for axis in axes:
-            print(f'\nGetting errors for axis{axis}:')
-            print('Axis: ' + str(hex(self.axes[axis].error)))
-            print('Motor: ' + str(hex(self.axes[axis].motor.error)))
-            print('Controller :' + str(hex(self.axes[axis].controller.error)))
-            print('Encoder: ' + str(hex(self.axes[axis].encoder.error)))
-
-    def left_vel_estimate(self):  return self.left_axis.encoder.vel_estimate   if self.left_axis  else 0 # units: encoder counts/s
-    def right_vel_estimate(self): return self.right_axis.encoder.vel_estimate  if self.right_axis else 0 # neg is forward for right
-    def left_pos(self):           return self.left_axis.encoder.pos_cpr        if self.left_axis  else 0  # units: encoder counts
-    def right_pos(self):          return self.right_axis.encoder.pos_cpr       if self.right_axis else 0   # sign!
+    def left_vel_estimate_tps(self):    return self.get_velocity_tps(self.left_axis)
+    def right_vel_estimate_tps(self):   return self.get_velocity_tps(self.right_axis)
+    def left_pos_t(self):               return self.get_position_t(self.left_axis)
+    def right_pos_t(self):              return self.get_position_t(self.right_axis)
+    
     
     # TODO check these match the right motors, but it doesn't matter for now
     def left_temperature(self):   return self.left_axis.motor.get_inverter_temp()  if self.left_axis  else 0.
@@ -225,7 +220,6 @@ class ODriveController:
     
     def left_current(self):       return self.left_axis.motor.current_control.Ibus  if self.left_axis and self.left_axis.current_state > 1 else 0.
     def right_current(self):      return self.right_axis.motor.current_control.Ibus if self.right_axis and self.right_axis.current_state > 1 else 0.
-    
     # from axis.hpp: https://github.com/madcowswe/ODrive/blob/767a2762f9b294b687d761029ef39e742bdf4539/Firmware/MotorControl/axis.hpp#L26
     MOTOR_STATES = [
         "UNDEFINED",                  #<! will fall through to idle
@@ -245,7 +239,16 @@ class ODriveController:
     def right_state(self):      return self.MOTOR_STATES[self.right_axis.current_state] if self.right_axis else "NOT_CONNECTED"
     
     def bus_voltage(self):      return self.driver.vbus_voltage if self.left_axis else 0.
-            
+          
+
+    def get_errors(self, axes=[0, 1]):
+        for axis in axes:
+            print(f'\nGetting errors for axis{axis}:')
+            print('Axis: ' + str(hex(self.axes[axis].error)))
+            print('Motor: ' + str(hex(self.axes[axis].motor.error)))
+            print('Controller :' + str(hex(self.axes[axis].controller.error)))
+            print('Encoder: ' + str(hex(self.axes[axis].encoder.error)))
+  
 
 if __name__ == '__main__':
     import math

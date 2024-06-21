@@ -10,7 +10,7 @@ from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 # from std_srvs.srv import Trigger
 from std_msgs.msg import Header
-import tf_transformations
+# import tf_transformations
 
 from odrive.enums import *
 from std_msgs.msg import Float32
@@ -46,12 +46,13 @@ class ODriveNode(Node):
             Float32, 'axis1_pos_pub', 50)
         
         # Publishers
-        # self.odom_publisher = self.create_publisher(Odometry, 'odom', 10)
+        # self.odom_publisher = self.create_publisher(Odometry, 'odom/unfiltered', 10)
         # self.joint_state_publisher = self.create_publisher(JointState, 'joint_states', 10)
         
         # Subscribers
         self.cmd_vel_subscriber = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         # #  Timers for publishing odometry and joint states
+
         # self.odom_timer = self.create_timer(0.1, self.publish_odometry)  # 10 Hz
         # self.joint_state_timer = self.create_timer(0.1, self.publish_joint_states)  # 10 Hz
        
@@ -95,15 +96,15 @@ class ODriveNode(Node):
         timer_period = 1 / 100
         self.timer = self.create_timer(timer_period, self.timer_callback)
 
-        self.axis0_vel_sub = self.create_subscription(
-            Float32, 'axis0_vel_sub', self.axis0_vel_callback, 50)
-        self.axis1_vel_sub = self.create_subscription(
-            Float32, 'axis1_vel_sub', self.axis1_vel_callback, 50)
+        # self.axis0_vel_sub = self.create_subscription(
+        #     Float32, 'axis0_vel_sub', self.axis0_vel_callback, 50)
+        # self.axis1_vel_sub = self.create_subscription(
+        #     Float32, 'axis1_vel_sub', self.axis1_vel_callback, 50)
 
-        self.axis0_pos_sub = self.create_subscription(
-            Float32, 'axis0_pos_sub', self.axis0_pos_callback, 50)
-        self.axis1_pos_sub = self.create_subscription(
-            Float32, 'axis1_pos_sub', self.axis1_pos_callback, 50)
+        # self.axis0_pos_sub = self.create_subscription(
+        #     Float32, 'axis0_pos_sub', self.axis0_pos_callback, 50)
+        # self.axis1_pos_sub = self.create_subscription(
+        #     Float32, 'axis1_pos_sub', self.axis1_pos_callback, 50)
         
     # def is_driver_ready(self):
     #     if self.driver:
@@ -159,33 +160,33 @@ class ODriveNode(Node):
 
     def timer_callback(self):
         msg = Float32()
-        msg.data = self.odrv0.get_velocity(0)
+        msg.data = self.odrv0.left_vel_estimate_tps()*2*3.14
         self.axis0_vel_pub.publish(msg)
 
-        msg.data = self.odrv0.get_velocity(1)
+        msg.data = self.odrv0.right_vel_estimate_tps()*2*3.14
         self.axis1_vel_pub.publish(msg)
 
-        msg.data = self.odrv0.get_position(0)
+        msg.data = self.odrv0.left_pos_t()*2*3.14
         self.axis0_pos_pub.publish(msg)
 
-        msg.data = self.odrv0.get_position(1)
+        msg.data = self.odrv0.right_pos_t()*2*3.14
         self.axis1_pos_pub.publish(msg)
 
-    def axis0_vel_callback(self, msg):
-        print(f'axis0 vel: {msg}')
-        self.odrv0.command_velocity(0, msg.data)
+    # def axis0_vel_callback(self, msg):
+    #     print(f'axis0 vel: {msg}')
+    #     self.odrv0.command_velocity(0, msg.data)
 
-    def axis1_vel_callback(self, msg):
-        self.get_logger().info(f'axis1 vel: {msg}')
-        self.odrv0.command_velocity(1, msg.data)
+    # def axis1_vel_callback(self, msg):
+    #     self.get_logger().info(f'axis1 vel: {msg}')
+    #     self.odrv0.command_velocity(1, msg.data)
 
-    def axis0_pos_callback(self, msg):
-        self.get_logger().info(f'axis0 pos: {msg}')
-        self.odrv0.command_position(0, msg.data)
+    # def axis0_pos_callback(self, msg):
+    #     self.get_logger().info(f'axis0 pos: {msg}')
+    #     self.odrv0.command_position(0, msg.data)
 
-    def axis1_pos_callback(self, msg):
-        self.get_logger().info(f'axis1 pos: {msg}')
-        self.odrv0.command_velocity(1, msg.data)
+    # def axis1_pos_callback(self, msg):
+    #     self.get_logger().info(f'axis1 pos: {msg}')
+    #     self.odrv0.command_velocity(1, msg.data)
 
     def cmd_vel_callback(self, msg: Twist):
         self.get_logger().info(f'Received velocity command: {msg}')
@@ -193,11 +194,12 @@ class ODriveNode(Node):
         self.get_logger().info(f'Received velocity command: {msg}')
         # Convert Twist message to left and right wheel speeds
         wheel_base = 0.48  # Distance between wheels
-        left_wheel_speed = msg.linear.x - (wheel_base / 2.0) * msg.angular.z
-        right_wheel_speed = msg.linear.x + (wheel_base / 2.0) * msg.angular.z
+        wheel_radius = 0.08255
+        left_wheel_speed = (msg.linear.x - (wheel_base / 2.0) * msg.angular.z)/(2*3.14*wheel_radius)
+        right_wheel_speed = (msg.linear.x + (wheel_base / 2.0) * msg.angular.z)/(2*3.14*wheel_radius)
 
         # Drive the wheels
-        self.odrv0.drive(left_wheel_speed, right_wheel_speed)
+        self.odrv0.drive_tps(left_wheel_speed, right_wheel_speed)
 
 
     # def publish_odometry(self):
@@ -227,13 +229,13 @@ class ODriveNode(Node):
 
     # def publish_joint_states(self):
     #     # Create and publish JointState message
-        # joint_state_msg = JointState()
-        # joint_state_msg.header = Header()
-        # joint_state_msg.header.stamp = self.get_clock().now().to_msg()
-        # joint_state_msg.name = ['left_wheel', 'right_wheel']
-        # joint_state_msg.position = [wheel_positions['left'], wheel_positions['right']]
+    #     joint_state_msg = JointState()
+    #     joint_state_msg.header = Header()
+    #     joint_state_msg.header.stamp = self.get_clock().now().to_msg()
+    #     joint_state_msg.name = ['left_wheel_joint', 'right_wheel_joint']
+    #     joint_state_msg.position = [self.odrv0.left_pos(), self.odrv0.right_pos()]
 
-        # self.joint_state_publisher.publish(joint_state_msg)
+    #     self.joint_state_publisher.publish(joint_state_msg)
 
     # def connect_odrive_callback(self, request: Trigger.Request, response: Trigger.Response):
     #     try:
