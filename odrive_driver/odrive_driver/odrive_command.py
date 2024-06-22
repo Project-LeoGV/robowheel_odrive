@@ -208,14 +208,14 @@ class ODriveController:
     def get_position_t(self, axis):
         return axis.encoder.pos_estimate    if axis  else 0  # units: turns
 
-    def left_vel_estimate_tps(self):    return -self.get_velocity_tps(self.left_axis)
+    def left_vel_estimate_tps(self):    return self.get_velocity_tps(self.left_axis)
     def right_vel_estimate_tps(self):   return self.get_velocity_tps(self.right_axis)
-    def left_pos_t(self):               return -self.get_position_t(self.left_axis)
+    def left_pos_t(self):               return self.get_position_t(self.left_axis)
     def right_pos_t(self):              return self.get_position_t(self.right_axis)
     
-    def left_vel_estimate_radps(self):    return self.get_velocity_tps(self.left_axis)*2*math.pi
+    def left_vel_estimate_radps(self):    return -self.get_velocity_tps(self.left_axis)*2*math.pi
     def right_vel_estimate_radps(self):   return self.get_velocity_tps(self.right_axis)*2*math.pi
-    def left_pos_rad(self):               return self.get_position_t(self.left_axis)*2*math.pi
+    def left_pos_rad(self):               return -self.get_position_t(self.left_axis)*2*math.pi
     def right_pos_rad(self):              return self.get_position_t(self.right_axis)*2*math.pi
 
     # TODO check these match the right motors, but it doesn't matter for now
