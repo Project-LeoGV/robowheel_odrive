@@ -5,7 +5,7 @@ from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 from std_msgs.msg import Float32
 from sensor_msgs.msg import JointState
 
-from geometry_msgs.msg import Twist,Quaternion
+from geometry_msgs.msg import Twist, Quaternion
 from nav_msgs.msg import Odometry
 
 # from std_srvs.srv import Trigger
@@ -252,7 +252,8 @@ class ODriveNode(Node):
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
         odom_msg.pose.pose.position.z = 0.0
-        odom_msg.pose.pose.orientation = Quaternion(*tf_transformations.quaternion_from_euler(0, 0, self.theta))
+        q = tf_transformations.quaternion_from_euler(0, 0, self.theta)
+        odom_msg.pose.pose.orientation = Quaternion(*q)
 
         # odom_msg.pose.covariance[0] = 0.001
         # odom_msg.pose.covariance[7] = 0.001
