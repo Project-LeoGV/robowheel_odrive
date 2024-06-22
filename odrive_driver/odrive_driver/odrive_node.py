@@ -1,20 +1,20 @@
 import sys
-from math import pi
-
 import rclpy
 from rclpy.node import Node
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 from std_msgs.msg import Float32
 from sensor_msgs.msg import JointState
+
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
+
 # from std_srvs.srv import Trigger
 from std_msgs.msg import Header
-# import tf_transformations
-
+import tf_transformations
 from odrive.enums import *
 from std_msgs.msg import Float32
 from .odrive_command import ODriveController
+import math
 
 # import odrive
 # from odrive.enums import *
@@ -23,6 +23,12 @@ class ODriveNode(Node):
     def __init__(self, odrv0):
         super().__init__('driver')
         self.odrv0 = odrv0
+
+        self.declare_parameter('wheel_base', 0.48)  # Distance between the wheels
+        self.declare_parameter('wheel_radius', 0.08255)  # Radius of the wheels
+
+        self.wheel_base = self.get_parameter('wheel_base').value
+        self.wheel_radius = self.get_parameter('wheel_radius').value
 
         # self.declare_parameter('connection.timeout', 15, ParameterDescriptor(
         #     type=ParameterType.PARAMETER_INTEGER, description='ODrive connection timeout in seconds'))
@@ -46,18 +52,24 @@ class ODriveNode(Node):
             Float32, 'axis1_pos_pub', 50)
         
         # Publishers
-        # self.odom_publisher = self.create_publisher(Odometry, 'odom/unfiltered', 10)
+        self.odom_publisher = self.create_publisher(Odometry, 'odom/unfiltered', 10)
         # self.joint_state_publisher = self.create_publisher(JointState, 'joint_states', 10)
         
         # Subscribers
         self.cmd_vel_subscriber = self.create_subscription(Twist, 'cmd_vel', self.cmd_vel_callback, 10)
         # #  Timers for publishing odometry and joint states
 
-        # self.odom_timer = self.create_timer(0.1, self.publish_odometry)  # 10 Hz
+        self.odom_timer = self.create_timer(0.1, self.publish_odometry)  # 10 Hz
         # self.joint_state_timer = self.create_timer(0.1, self.publish_joint_states)  # 10 Hz
        
         # # Variables to store the state
         self.current_velocity = Twist()
+        self.current_time = self.get_clock().now()
+        self.last_time = self.get_clock().now()
+
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
         # self.current_joint_state = JointState()
         # self.current_odometry = Odometry()
         # self.connect_odrive_service = self.create_service(
@@ -160,16 +172,16 @@ class ODriveNode(Node):
 
     def timer_callback(self):
         msg = Float32()
-        msg.data = self.odrv0.left_vel_estimate_tps()*2*3.14
+        msg.data = self.odrv0.left_vel_estimate_tps()*2*math.pi
         self.axis0_vel_pub.publish(msg)
 
-        msg.data = self.odrv0.right_vel_estimate_tps()*2*3.14
+        msg.data = self.odrv0.right_vel_estimate_tps()*2*math.pi
         self.axis1_vel_pub.publish(msg)
 
-        msg.data = self.odrv0.left_pos_t()*2*3.14
+        msg.data = self.odrv0.left_pos_t()*2*math.pi
         self.axis0_pos_pub.publish(msg)
 
-        msg.data = self.odrv0.right_pos_t()*2*3.14
+        msg.data = self.odrv0.right_pos_t()*2*math.pi
         self.axis1_pos_pub.publish(msg)
 
     # def axis0_vel_callback(self, msg):
@@ -193,39 +205,73 @@ class ODriveNode(Node):
         self.current_velocity = msg
         self.get_logger().info(f'Received velocity command: {msg}')
         # Convert Twist message to left and right wheel speeds
-        wheel_base = 0.48  # Distance between wheels
-        wheel_radius = 0.08255
-        left_wheel_speed = (msg.linear.x - (wheel_base / 2.0) * msg.angular.z)/(2*3.14*wheel_radius)
-        right_wheel_speed = (msg.linear.x + (wheel_base / 2.0) * msg.angular.z)/(2*3.14*wheel_radius)
+
+        left_wheel_speed = (msg.linear.x - (self.wheel_base / 2.0) * msg.angular.z)/(2*3.14*self.wheel_radius)
+        right_wheel_speed = (msg.linear.x + (self.wheel_base / 2.0) * msg.angular.z)/(2*3.14*self.wheel_radius)
 
         # Drive the wheels
         self.odrv0.drive_tps(left_wheel_speed, right_wheel_speed)
 
 
-    # def publish_odometry(self):
-    #    wheel_velocities = get_wheel_velocity()
-    #     wheel_positions = get_wheel_position()
+    def publish_odometry(self):
+        self.current_time = self.get_clock().now()
+        dt = (self.current_time - self.last_time).nanoseconds / 1e9  # Time difference in seconds
+        self.last_time = self.current_time
 
-    #     # Compute odometry here
-    #     # Example, not accurate
-    #     x = wheel_positions['left']
-    #     y = 0.0
-    #     theta = 0.0
+        # Calculate the distance each wheel has traveled
+        delta_l = self.odrv0.left_vel_estimate_radps() * self.wheel_radius * dt #rps*R*t
+        delta_r = self.odrv0.right_vel_estimate_radps() * self.wheel_radius * dt
 
-    #     odom_msg = Odometry()
-    #     odom_msg.header = Header()
-    #     odom_msg.header.stamp = self.get_clock().now().to_msg()
-    #     odom_msg.header.frame_id = 'odom'
+        # Calculate the change in orientation
+        delta_theta = (delta_r - delta_l) / (self.wheel_base/2.0)
 
-    #     odom_msg.pose.pose.position.x = x
-    #     odom_msg.pose.pose.position.y = y
-    #     odom_msg.pose.pose.position.z = 0.0
-    #     odom_msg.pose.pose.orientation = tf_transformations.quaternion_from_euler(0, 0, theta)
+        # Calculate the distance traveled by the robot
+        delta_s = (delta_r + delta_l) / 2.0
 
-    #     odom_msg.twist.twist.linear.x = (wheel_velocities['left'] + wheel_velocities['right']) / 2.0
-    #     odom_msg.twist.twist.angular.z = (wheel_velocities['right'] - wheel_velocities['left']) / 0.5
+        # Update the robot's position and orientation
+        # if delta_theta != 0:
+        #     radius = delta_s / delta_theta
+        #     self.x += radius * math.sin(delta_theta + self.theta) - radius * math.sin(self.theta)
+        #     self.y += radius * math.cos(delta_theta + self.theta) - radius * math.cos(self.theta)
+        #     self.theta += delta_theta
+        # else:
+        #     self.x += delta_s * math.cos(self.theta)
+        #     self.y += delta_s * math.sin(self.theta)
 
-    #     self.odom_publisher.publish(odom_msg)
+        self.x += delta_s * math.cos(self.theta)
+        self.y += delta_s * math.sin(self.theta)
+        self.theta += delta_theta
+  
+
+        odom_msg = Odometry()
+        odom_msg.header = Header()
+        odom_msg.header.stamp = self.current_time.to_msg()
+        odom_msg.header.frame_id = 'odom'
+        odom_msg.child_frame_id = "base_footprint"
+
+        odom_msg.pose.pose.position.x = self.x
+        odom_msg.pose.pose.position.y = self.y
+        odom_msg.pose.pose.position.z = 0.0
+        odom_msg.pose.pose.orientation = tf_transformations.quaternion_from_euler(0, 0, self.theta)
+
+        # odom_msg.pose.covariance[0] = 0.001
+        # odom_msg.pose.covariance[7] = 0.001
+        # odom_msg.pose.covariance[35] = 0.001
+
+        odom_msg.twist.twist.linear.x = delta_s / dt
+        odom_msg.twist.twist.linear.y = 0.0
+        odom_msg.twist.twist.angular.z = delta_theta / dt
+
+        # odom_msg.twist.covariance[0] = 0.0001
+        # odom_msg.twist.covariance[7] = 0.0001
+        # odom_msg.twist.covariance[35] = 0.0001
+
+        self.odom_publisher.publish(odom_msg)
+
+
+
+
+
 
     # def publish_joint_states(self):
     #     # Create and publish JointState message

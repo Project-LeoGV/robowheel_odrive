@@ -4,7 +4,7 @@ import sys
 from time import sleep
 # import logging
 # import traceback
-
+import math
 import odrive
 from odrive.enums import *
 
@@ -213,7 +213,11 @@ class ODriveController:
     def left_pos_t(self):               return self.get_position_t(self.left_axis)
     def right_pos_t(self):              return self.get_position_t(self.right_axis)
     
-    
+    def left_vel_estimate_radps(self):    return self.get_velocity_tps(self.left_axis)*2*math.pi
+    def right_vel_estimate_radps(self):   return self.get_velocity_tps(self.right_axis)*2*math.pi
+    def left_pos_rad(self):               return self.get_position_t(self.left_axis)*2*math.pi
+    def right_pos_rad(self):              return self.get_position_t(self.right_axis)*2*math.pi
+
     # TODO check these match the right motors, but it doesn't matter for now
     def left_temperature(self):   return self.left_axis.motor.get_inverter_temp()  if self.left_axis  else 0.
     def right_temperature(self):  return self.right_axis.motor.get_inverter_temp() if self.right_axis else 0.
