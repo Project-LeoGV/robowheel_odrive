@@ -252,7 +252,7 @@ class ODriveNode(Node):
         odom_msg.pose.pose.position.x = self.x
         odom_msg.pose.pose.position.y = self.y
         odom_msg.pose.pose.position.z = 0.0
-        odom_msg.pose.pose.orientation = tf_transformations.quaternion_from_euler(0, 0, self.theta)
+        odom_msg.pose.pose.orientation = Quaternion(tf_transformations.quaternion_from_euler(0, 0, self.theta))
 
         # odom_msg.pose.covariance[0] = 0.001
         # odom_msg.pose.covariance[7] = 0.001
