@@ -250,12 +250,12 @@ class ODriveNode(Node):
     def publish_feedback(self):
         # if self.is_driver_ready():
             msg = Float32()
-            msg.data = self.odrv0.vbus_voltage
+            msg.data = self.odrv0.odrive.vbus_voltage
             self.battery_voltage_publisher.publish(msg)
 
             msg = Float32()
             msg.data = (
-                self.odrv0.odrive.vbus_voltage -
+                self.odrv0.odrive.vbus_voltage *(38.5/45) -
                 self.get_parameter(
                     'battery.min_voltage').get_parameter_value().double_value
             ) / (
@@ -280,7 +280,7 @@ class ODriveNode(Node):
             self.left_motor_rpm_publisher.publish(msg)  
 
             msg = Float32()
-            msg.data = self.odrv0.left_axis.motor.torque_estimate
+            msg.data = self.odrv0.left_axis.motor.current_control.Iq_measured * self.odrv0.left_axis.motor.config.torque_constant
             self.left_motor_torque_publisher.publish(msg) 
 
             msg = Float32()
@@ -288,7 +288,7 @@ class ODriveNode(Node):
             self.right_motor_rpm_publisher.publish(msg)    
 
             msg = Float32()
-            msg.data = self.odrv0.right_axis.motor.torque_estimate
+            msg.data = self.odrv0.right_axis.motor.current_control.Iq_measured * self.odrv0.right_axis.motor.config.torque_constant
             self.right_motor_torque_publisher.publish(msg)    
         # else:
         #     self.get_logger().debug('ODrive not ready')
